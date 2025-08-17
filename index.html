@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>PSVita Game List</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 2rem; }
+        table { border-collapse: collapse; width: 100%; margin-top: 1rem; }
+        th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+        th { background: #f5f5f5; }
+        caption { font-size: 1.5em; margin-bottom: 1em; }
+        #error { color: red; }
+    </style>
+</head>
+<body>
+    <h1>PSVita Games Database</h1>
+    <div id="error"></div>
+    <div id="table-container">Loading...</div>
+
+    <script>
+        // Helper to parse CSV to array of objects
+        function parseCSV(csv, delimiter = ',') {
+            const lines = csv.trim().split('\n');
+            const headers = lines[0].split(delimiter).map(h => h.trim());
+            return lines.slice(1).map(line => {
+                const cols = [];
+                let current = '';
+                let inQuotes = false;
+                for (let i = 0; i < line.length; i++) {
+                    const char = line[i];
+                    if (char === '"' && line[i + 1] === '"') {
+                        current += '"';
+                        i++;
+                    } else if (char === '"') {
+                        inQuotes = !inQuotes;
+                    } else if (char === delimiter && !inQuotes) {
+                        cols.push(current);
+                        current = '';
+                    } else {
+                        current += char;
+                    }
+                }
+                cols.push(current);
+                const obj = {};
+                headers.forEach((h, i) => obj[h] = cols[i]);
+                return obj;
+            });
+        }
+
+        fetch('psvita_games_tidy.csv')
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Failed to fetch CSV file.');
+                }
+                return response.text();
+            })
+            .then(csvText => {
+                const data = parseCSV(csvText);
+                if (data.length === 0) {
+                    document.getElementById('table-container').innerText = 'No data found.';
+                    return;
+                }
+                const headers = Object.keys(data[0]);
+                let html = '<table><caption>PSVita Games</caption><thead><tr>';
+                headers.forEach(h => {
+                    html += `<th>${h}</th>`;
+                });
+                html += '</tr></thead><tbody>';
+                data.forEach(row => {
+                    html += '<tr>';
+                    headers.forEach(h => {
+                        html += `<td>${row[h] || ''}</td>`;
+                    });
+                    html += '</tr>';
+                });
+                html += '</tbody></table>';
+                document.getElementById('table-container').innerHTML = html;
+            })
+            .catch(err => {
+                document.getElementById('error').innerText = err.message;
+                document.getElementById('table-container').innerText = '';
+            });
+    </script>
+</body>
+</html>
