@@ -1,85 +1,138 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <title>PSVitaDB</title>
-    <style>
-        body { font-family: Arial, sans-serif; margin: 2rem; }
-        table { border-collapse: collapse; width: 100%; margin-top: 1rem; }
-        th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
-        th { background: #f5f5f5; }
-        caption { font-size: 1.5em; margin-bottom: 1em; }
-        #error { color: red; }
-    </style>
+<meta charset="UTF-8">
+<title>PSVitaDB</title>
+<style>
+* { box-sizing:border-box; margin:0; padding:0; }
+body {
+    font-family:'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: linear-gradient(to bottom right,#1c1c1c,#2c2c2c);
+    color:#f0f0f0;
+    min-height:100vh;
+    padding:2rem;
+}
+h1 { text-align:center; margin-bottom:1rem; font-size:2.5rem; text-shadow:1px 1px 5px #000; }
+#search-container { text-align:center; margin-bottom:1.5rem; }
+#search-input {
+    width:50%; padding:0.75rem 1rem; font-size:1.1rem;
+    border-radius:25px; border:none; outline:none; transition:all 0.3s;
+}
+#search-input:focus { box-shadow:0 0 10px #00ffd6; }
+
+table {
+    width:100%; border-collapse:collapse; background:#1e1e1e;
+    border-radius:10px; overflow:hidden; box-shadow:0 0 20px rgba(0,0,0,0.5);
+}
+caption { font-size:2rem; margin-bottom:1rem; font-weight:bold; }
+th, td {
+    padding:12px 35px 12px 15px; /* extra right padding for the icon */
+    border-bottom:1px solid #444;
+    text-align:left;
+    transition: background 0.3s;
+    position: relative;
+}
+th { background:#111; color:#0ff; font-size:1.1rem; }
+
+tr:hover td { background:#333; }
+
+/* Copy icon inside cell with animation */
+.cell-copy-btn {
+    display: inline-block;
+    margin-left: 8px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    color: #0ff;
+    user-select:none;
+    opacity:0;
+    transform: translateX(-10px);
+    transition: opacity 0.3s ease, transform 0.3s ease;
+}
+td:hover .cell-copy-btn { opacity:1; transform: translateX(0); }
+
+.cell-copy-btn:hover { color:#0ff; }
+
+@media(max-width:768px){ #search-input{width:80%;} table, th, td{font-size:0.9rem;} }
+
+#error{color:#ff5555;text-align:center;margin-bottom:1rem;font-weight:bold;}
+#no-results{ text-align:center; margin-top:1rem; font-style:italic; color:#aaa; }
+</style>
 </head>
 <body>
-    <h1 style="text-align: center;">PSVita Games Database</h1>
-    <div id="error"></div>
-    <div id="table-container">Loading...</div>
 
-    <script>
-        // Helper to parse CSV to array of objects
-        function parseCSV(csv, delimiter = ',') {
-            const lines = csv.trim().split('\n');
-            const headers = lines[0].split(delimiter).map(h => h.trim());
-            return lines.slice(1).map(line => {
-                const cols = [];
-                let current = '';
-                let inQuotes = false;
-                for (let i = 0; i < line.length; i++) {
-                    const char = line[i];
-                    if (char === '"' && line[i + 1] === '"') {
-                        current += '"';
-                        i++;
-                    } else if (char === '"') {
-                        inQuotes = !inQuotes;
-                    } else if (char === delimiter && !inQuotes) {
-                        cols.push(current);
-                        current = '';
-                    } else {
-                        current += char;
-                    }
-                }
-                cols.push(current);
-                const obj = {};
-                headers.forEach((h, i) => obj[h] = cols[i]);
-                return obj;
-            });
+<h1>PSVitaDB</h1>
+<div id="search-container"><input type="text" id="search-input" placeholder="Search games..."></div>
+<div id="error"></div>
+<div id="table-container">Loading...</div>
+
+<script>
+// CSV parser
+function parseCSV(csv, delimiter=','){
+    const lines=csv.trim().split('\n');
+    const headers=lines[0].split(delimiter).map(h=>h.trim());
+    return lines.slice(1).map(line=>{
+        const cols=[]; let current=''; let inQuotes=false;
+        for(let i=0;i<line.length;i++){
+            const char=line[i];
+            if(char==='"' && line[i+1]==='"'){current+='"'; i++;}
+            else if(char==='"'){inQuotes=!inQuotes;}
+            else if(char===delimiter && !inQuotes){cols.push(current); current='';}
+            else{current+=char;}
         }
+        cols.push(current);
+        const obj={}; headers.forEach((h,i)=>obj[h]=cols[i]); return obj;
+    });
+}
 
-        fetch('psvita_games_tidy.csv')
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error('Failed to fetch CSV file.');
-                }
-                return response.text();
-            })
-            .then(csvText => {
-                const data = parseCSV(csvText);
-                if (data.length === 0) {
-                    document.getElementById('table-container').innerText = 'No data found.';
-                    return;
-                }
-                const headers = Object.keys(data[0]);
-                let html = '<table><caption>PSVita Games</caption><thead><tr>';
-                headers.forEach(h => {
-                    html += `<th>${h}</th>`;
-                });
-                html += '</tr></thead><tbody>';
-                data.forEach(row => {
-                    html += '<tr>';
-                    headers.forEach(h => {
-                        html += `<td>${row[h] || ''}</td>`;
-                    });
-                    html += '</tr>';
-                });
-                html += '</tbody></table>';
-                document.getElementById('table-container').innerHTML = html;
-            })
-            .catch(err => {
-                document.getElementById('error').innerText = err.message;
-                document.getElementById('table-container').innerText = '';
+let gameData=[];
+function renderTable(data){
+    if(!data||data.length===0){document.getElementById('table-container').innerHTML='<div id="no-results">No results found.</div>'; return;}
+    const headers=Object.keys(data[0]);
+    let html='<table><caption>Games</caption><thead><tr>';
+    headers.forEach(h=>html+=`<th>${h}</th>`);
+    html+='</tr></thead><tbody>';
+
+    data.forEach(row=>{
+        html+='<tr>';
+        headers.forEach(h=>{
+            const value=row[h]||'';
+            html+=`<td>${value}<span class="cell-copy-btn" title="Copy">&#128203;</span></td>`;
+        });
+        html+='</tr>';
+    });
+
+    html+='</tbody></table>';
+    document.getElementById('table-container').innerHTML=html;
+
+    // Click event for copy buttons
+    document.querySelectorAll('.cell-copy-btn').forEach(btn=>{
+        btn.addEventListener('click', e=>{
+            const cell = e.target.closest('td');
+            const text = cell.firstChild.textContent.trim(); // just the cell's value
+            navigator.clipboard.writeText(text).then(()=>{
+                btn.textContent='✔';
+                setTimeout(()=>btn.textContent='📋',500);
             });
-    </script>
+            e.stopPropagation(); 
+        });
+    });
+}
+
+// Search function
+function searchGames(query){
+    const lower=query.toLowerCase();
+    const filtered=gameData.filter(game=>Object.values(game).some(v=>v && v.toLowerCase().includes(lower)));
+    renderTable(filtered);
+}
+
+// Load CSV
+fetch('psvita.csv')
+.then(res=>{if(!res.ok)throw new Error('Failed to fetch CSV file.'); return res.text();})
+.then(csvText=>{gameData=parseCSV(csvText); renderTable(gameData);})
+.catch(err=>{document.getElementById('error').innerText=err.message; document.getElementById('table-container').innerText='';});
+
+document.getElementById('search-input').addEventListener('input', e=>{searchGames(e.target.value);});
+</script>
+
 </body>
 </html>
